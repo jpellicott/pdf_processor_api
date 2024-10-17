@@ -1,0 +1,20 @@
+# FastAPI and Uvicorn for the API
+fastapi==0.100.0
+uvicorn==0.22.0
+
+# PyPDF2 for extracting text from PDFs
+PyPDF2==3.0.1
+
+# Transformers for zero-shot learning (BART)
+transformers==4.45.2
+
+# Torch for running models (install a specific version with CUDA if using GPU)
+torch==2.4.1
+
+# NLTK for tokenization
+nltk==3.8.1
+
+# Optional: tqdm for progress bars
+tqdm==4.64.1
+
+python-multipart
