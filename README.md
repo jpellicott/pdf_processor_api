@@ -22,10 +22,19 @@ This API processes PDF files containing academic papers to extract key informati
 
 1. **Clone the repository**:
 
-   ```bash
-   git clone https://github.com/your-repo/pdf-processor-api.git
-   cd pdf-processor-api
-   ```
+ ```bash
+ git clone https://github.com/your-repo/pdf-processor-api.git
+ cd pdf-processor-api
+ ```
+   
+
+Set up a virtual environment (optional but recommended):
+
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+ ```
 
    **Install the dependencies**:
 

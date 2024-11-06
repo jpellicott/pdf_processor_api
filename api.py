@@ -1,9 +1,28 @@
+import numpy as np
 from fastapi import FastAPI, File, UploadFile
 from transformers import pipeline
 from PyPDF2 import PdfReader
 import spacy
 import re
 import json
+from naics import NAICS_CODES
+from sentence_transformers import SentenceTransformer, util
+
+
+# Filter for only 4-digit NAICS codes
+naics_3_digit_codes = {code: description for code, description in NAICS_CODES.items() if len(code) == 3}
+
+# print the first 5 codes
+print(list(naics_3_digit_codes.items())[:5])
+
+# print length of the codes
+print(len(naics_3_digit_codes))
+
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Embed NAICS descriptions once at startup
+naics_descriptions = list(naics_3_digit_codes.values())
+naics_embeddings = embedder.encode(naics_descriptions, convert_to_tensor=True)
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -44,6 +63,32 @@ def classify_paper(text, topics, classifier, top_n=3):
     top_topics = sorted(zip(classification_results['labels'], classification_results['scores']),
                         key=lambda x: x[1], reverse=True)[:top_n]
     return top_topics
+
+
+
+# Function to classify NAICS codes using embeddings
+def find_closest_naics(text, top_n=5):
+    # Embed the input text (first 5000 characters for efficiency)
+    text_embedding = embedder.encode(text[:5000])
+
+    # Compute cosine similarities with pre-embedded NAICS descriptions
+    cosine_scores = util.cos_sim(text_embedding,
+                                 naics_embeddings).cpu().numpy().flatten()
+
+    # Get indices of top N most relevant NAICS codes
+    top_indices = np.argsort(cosine_scores)[-top_n:][::-1]
+
+    # Retrieve top N results based on indices and convert score to a regular float
+    top_naics_codes = [
+        {
+            "naics_code": list(naics_3_digit_codes.keys())[idx],
+            "description": naics_descriptions[idx],
+            "score": float(cosine_scores[idx])
+            # Convert to regular float
+        }
+        for idx in top_indices
+    ]
+    return top_naics_codes
 
 
 # Function to extract authors using NER, focusing on the first 500 tokens
@@ -187,43 +232,34 @@ def extract_abstract(text):
 # Define the API route to handle PDF upload and topic extraction
 @app.post("/extract_topics/")
 async def extract_topics(
-    file: UploadFile = File(...)
+        file: UploadFile = File(...)
 ):
-    # Step 1: Extract text from the uploaded PDF
     pdf_text = extract_text_from_pdf(file.file)
-
-    # Step 2: Perform zero-shot classification
     top_topics = classify_paper(pdf_text, topics, classifier)
 
-    # Step 3: Extract authors from the first part of the text
+    # Use embedding-based NAICS classification
+    top_naics_codes = find_closest_naics(pdf_text)
+
     extracted_authors = extract_authors(pdf_text)
-
-    # Step 4: Extract journal from the first 100 tokens of the text
     extracted_journal = extract_journal(pdf_text)
-
-    # Step 5: Extract date from the first 100 tokens of the text
     extracted_date = extract_date(pdf_text)
-
-    # Step 6: Extract title from the first 200 tokens of the text
-    extracted_title = extract_title(pdf_text)
-
-    # Step 7: Extract abstract
     extracted_abstract = extract_abstract(pdf_text)
 
-    # Step 8: Prepare the result in JSON format
     result = {
         "extracted_authors": extracted_authors,
         "extracted_journal": extracted_journal,
         "extracted_date": extracted_date,
-        "extracted_title": extracted_title,
         "extracted_abstract": extracted_abstract,
         "file_name": file.filename,
-        "topics": [{"topic": topic, "score": score} for topic, score in top_topics]
+        "topics": [{"topic": topic, "score": score} for topic, score in
+                   top_topics],
+        "naics_codes": [{"naics_code": item['naics_code'],
+                         "description": item['description'],
+                         "score": item['score']} for item in
+                        top_naics_codes]
     }
 
-    # Return the result as a JSON response
     return result
-
 
 # To run locally, use Uvicorn
 if __name__ == "__main__":
